@@ -200,7 +200,7 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                     <div className="bg-black/80 rounded-lg p-3 h-32 overflow-hidden flex flex-col gap-1 border border-white/5">
                         <div className="text-[8px] font-pixel text-gray-700 mb-1 border-b border-white/5 pb-1 flex items-center gap-1"><AlertTriangle size={10} /> CONSOLE_LOG</div>
                         <div className="flex flex-col-reverse gap-1">
-                            {log.map((l, i) => <div key={i} className={`text-[8px] font-pixel leading-relaxed ${i === 0 ? 'text-emerald-400' : 'text-gray-500'}`}>&gt;&gt; {l}</div>)}
+                            {log.map((l, i) => <div key={i} className={`text-[8px] font-pixel leading-relaxed ${i === 0 ? 'text-emerald-400' : 'text-gray-500'}`}>{`>> ${l}`}</div>)}
                         </div>
                     </div>
                 </div>

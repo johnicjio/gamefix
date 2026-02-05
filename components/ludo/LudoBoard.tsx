@@ -10,21 +10,23 @@ interface LudoBoardProps {
   onPieceClick: (piece: Piece) => void;
   validMoves: string[]; 
   movingPieceId: string | null;
+  diceValue: number | null;
 }
 
 const LudoBoard: React.FC<LudoBoardProps> = ({ 
     pieces, 
     onPieceClick, 
     validMoves,
-    movingPieceId
+    movingPieceId,
+    diceValue
 }) => {
   const [capturingPiece, setCapturingPiece] = useState<string | null>(null);
+  const [hoveredPiece, setHoveredPiece] = useState<string | null>(null);
   const prevPiecesRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
       pieces.forEach(p => {
           const prevPos = prevPiecesRef.current.get(p.id);
-          // If piece moved back to base, it was captured
           if (prevPos !== undefined && prevPos !== -1 && p.position === -1) {
               setCapturingPiece(p.id);
               setTimeout(() => setCapturingPiece(null), 800);
@@ -48,6 +50,19 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
       return stacks;
   }, [pieces]);
 
+  // Calculate target highlight for hovered valid piece
+  const targetHighlight = useMemo(() => {
+      if (!hoveredPiece || !diceValue || !validMoves.includes(hoveredPiece)) return null;
+      const piece = pieces.find(p => p.id === hoveredPiece);
+      if (!piece) return null;
+      
+      const targetPos = piece.position === -1 ? 0 : piece.position + diceValue;
+      if (targetPos > 57) return null;
+      
+      const coords = getPieceCoordinates(piece.color, targetPos, 0); 
+      return { x: coords.x, y: coords.y };
+  }, [hoveredPiece, diceValue, validMoves, pieces]);
+
   const renderCells = () => {
       const cells = [];
       const CELL_SIZE = 100 / 15;
@@ -59,6 +74,12 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
 
               let bgClass = "bg-transparent";
               let content = null;
+              let isHighlight = false;
+
+              // Check highlight
+              if (targetHighlight && targetHighlight.x === x && targetHighlight.y === y) {
+                  isHighlight = true;
+              }
 
               // Home Stretches
               if (y===7 && x>0 && x<6) bgClass = "bg-green-500/20";
@@ -77,7 +98,10 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
 
               cells.push(
                   <div key={`${x}-${y}`} 
-                       className={`absolute border-[0.5px] border-white/5 flex items-center justify-center transition-colors ${bgClass}`}
+                       className={`absolute border-[0.5px] border-white/5 flex items-center justify-center transition-all duration-300
+                           ${bgClass}
+                           ${isHighlight ? 'bg-white/40 ring-2 ring-white z-0 animate-pulse' : ''}
+                       `}
                        style={{ left: `${x * CELL_SIZE}%`, top: `${y * CELL_SIZE}%`, width: `${CELL_SIZE}%`, height: `${CELL_SIZE}%` }}>
                       {content}
                   </div>
@@ -109,7 +133,6 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
             .captured-anim { animation: capture-burst 0.6s ease-out forwards; }
         `}</style>
         
-        {/* Board Background Patterns */}
         <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
 
         {/* Bases */}
@@ -132,7 +155,6 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
             );
         })}
 
-        {/* Home Stretch / Finish Center */}
         <div className="absolute left-[40%] top-[40%] w-[20%] h-[20%] z-10 bg-gray-900 border-4 border-gray-800 rotate-45 scale-[0.8] rounded-3xl flex items-center justify-center overflow-hidden shadow-2xl">
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 via-transparent to-purple-500/20" />
             <Crown size={32} className="text-yellow-400 -rotate-45 relative z-10 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]" />
@@ -140,7 +162,6 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
 
         {renderCells()}
 
-        {/* Pieces */}
         {pieces.map((piece, i) => {
             const coords = getPieceCoordinates(piece.color, piece.position, parseInt(piece.id.split('-')[1]));
             const isValidMove = validMoves.includes(piece.id);
@@ -153,12 +174,10 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
             const stack = pieceStacks[stackKey] || [];
             const stackIdx = stack.findIndex(p => p.id === piece.id);
 
-            // Piece Stacking Logic - Spread out slightly if multiple on same spot
             let offsetX = 0; let offsetY = 0;
             if (stack.length > 1 && piece.position !== -1) {
-                // Circular offset for stacking
                 const angle = (stackIdx / stack.length) * Math.PI * 2;
-                const dist = 1.8; // Slightly larger spread
+                const dist = 1.8;
                 offsetX = Math.cos(angle) * dist;
                 offsetY = Math.sin(angle) * dist;
             }
@@ -174,6 +193,8 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
                 <div
                     key={piece.id}
                     onClick={() => isValidMove && onPieceClick(piece)}
+                    onMouseEnter={() => isValidMove && setHoveredPiece(piece.id)}
+                    onMouseLeave={() => setHoveredPiece(null)}
                     className={`absolute rounded-full w-[5.5%] h-[5.5%] flex items-center justify-center shadow-2xl ring-2
                         ${colors[piece.color]} 
                         ${isValidMove ? 'cursor-pointer active-piece-anim z-40 brightness-110' : ''}

@@ -246,6 +246,7 @@ const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                     validMoves={!isMoving && diceValue && isMyTurn ? pieces.filter(p => p.color === currentPlayer.color && canMove(p, diceValue)).map(p => p.id) : []}
                     onPieceClick={handleMove}
                     movingPieceId={movingPieceId}
+                    diceValue={diceValue}
                 />
             </div>
 

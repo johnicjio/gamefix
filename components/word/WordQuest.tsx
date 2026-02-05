@@ -1,10 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
 import { Sparkles, Send, Timer, AlertCircle, CheckCircle2, Trophy, Loader2 } from 'lucide-react';
 import { audioService } from '../../services/audioService';
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+import { validateWord as checkWord } from '../../services/geminiService';
 
 const WordQuest: React.FC<{ playerName: string, onGameEnd: (w: string) => void }> = ({ playerName, onGameEnd }) => {
   const [currentLetter, setCurrentLetter] = useState('A');
@@ -21,7 +19,7 @@ const WordQuest: React.FC<{ playerName: string, onGameEnd: (w: string) => void }
       return () => clearInterval(t);
     } else if (timeLeft === 0 && status === 'PLAYING') {
       audioService.playFailure();
-      onGameEnd(score > 10 ? playerName : "Gemini AI");
+      onGameEnd(score > 10 ? playerName : "CPU");
     }
   }, [timeLeft, status]);
 
@@ -41,24 +39,23 @@ const WordQuest: React.FC<{ playerName: string, onGameEnd: (w: string) => void }
 
     setStatus('CHECKING');
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Is "${word}" a valid English word that starts with "${currentLetter}"? Answer in JSON: {"valid": boolean, "nextLetter": "string"}`,
-        config: { responseMimeType: 'application/json' }
-      });
-      const res = JSON.parse(response.text || '{}');
+      const result = await checkWord(word, currentLetter, 2);
       
-      if (res.valid) {
+      if (result.isValid) {
         audioService.playCorrect();
         setScore(prev => prev + word.length);
         setUsedWords(prev => [...prev, word]);
-        setCurrentLetter(res.nextLetter?.toUpperCase() || word[word.length-1]);
+        
+        // Next letter is the last letter of the valid word
+        const next = word[word.length - 1];
+        setCurrentLetter(next);
+        
         setInput('');
         setTimeLeft(prev => Math.min(prev + 5, 30));
         setMessage("Excellent!");
       } else {
         audioService.playFailure();
-        setMessage("Invalid word!");
+        setMessage(result.reason || "Invalid word!");
       }
     } catch (e) {
       console.error(e);
@@ -73,7 +70,7 @@ const WordQuest: React.FC<{ playerName: string, onGameEnd: (w: string) => void }
         <div className="bg-gray-900 p-12 rounded-[3rem] border border-gray-800 text-center max-w-lg shadow-2xl">
           <Trophy size={60} className="text-purple-500 mx-auto mb-8" />
           <h2 className="text-4xl font-black mb-4 tracking-tighter uppercase">Word Quest</h2>
-          <p className="text-gray-500 mb-10 text-sm">Chain words together and beat the clock. Gemini validates every move.</p>
+          <p className="text-gray-500 mb-10 text-sm">Chain words together and beat the clock.</p>
           <button onClick={startGame} className="w-full bg-white text-black font-black py-5 rounded-[2rem] text-xl shadow-xl hover:scale-105 transition-all">
             BEGIN QUEST
           </button>
@@ -120,7 +117,7 @@ const WordQuest: React.FC<{ playerName: string, onGameEnd: (w: string) => void }
             {status === 'CHECKING' && (
               <div className="absolute inset-0 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center gap-3">
                 <Loader2 className="animate-spin text-purple-500" />
-                <span className="text-xs font-black uppercase tracking-widest text-gray-400">Gemini is checking...</span>
+                <span className="text-xs font-black uppercase tracking-widest text-gray-400">Verifying...</span>
               </div>
             )}
           </form>
