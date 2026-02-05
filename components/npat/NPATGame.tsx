@@ -81,9 +81,8 @@ const NPATGame: React.FC<GameProps> = ({ network, playerName, roomId, onGameEnd 
             });
         });
         newPlayers.forEach(p => {
-            // Fix: Explicitly typing the accumulator 'a' as number to avoid 'unknown' inference and fix '+' operator error.
-            // Also typing 'b' as number to ensure 'roundTotal' is inferred as a number, fixing the '>' operator error.
-            const roundTotal = Object.values(p.scores).reduce((a: number, b: number) => a + b, 0);
+            // Fix: Explicitly cast to number[] and type roundTotal as number to ensure correct inference and fix the operator '>' error on line 88 (or 102).
+            const roundTotal: number = (Object.values(p.scores) as number[]).reduce((a: number, b: number) => a + b, 0);
             p.totalScore += roundTotal;
             if (roundTotal > 0) audioService.playCorrect();
         });
