@@ -2,15 +2,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameProps } from '../../types';
 import { audioService } from '../../services/audioService';
-import { User, Cpu, ArrowUpCircle, Ghost, AlertTriangle, RefreshCw } from 'lucide-react';
+import { User, Cpu, ArrowUpCircle, Ghost, AlertTriangle, RefreshCw, Wifi } from 'lucide-react';
 
 const SNAKES: Record<number, number> = { 17:7, 54:34, 62:18, 64:60, 87:24, 93:73, 95:75, 99:80 };
 const LADDERS: Record<number, number> = { 1:38, 4:14, 9:31, 21:42, 28:84, 36:44, 51:67, 71:91, 80:100 };
 
-const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
+const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) => {
+    // Network Role Determination
+    const isHost = !network || network.role === 'HOST' || network.role === 'OFFLINE';
+    const isGuest = network && network.role === 'GUEST';
+    const isConnected = network?.isConnected ?? false;
+    const isOfflineMode = !network || network.role === 'OFFLINE' || (network.role === 'HOST' && !isConnected);
+
     const [players, setPlayers] = useState([
         { id: 'p1', name: playerName, pos: 1, isBot: false, color: '#10b981', avatar: '👾' },
-        { id: 'p2', name: 'Bot Blue', pos: 1, isBot: true, color: '#3b82f6', avatar: '🤖' }
+        { id: 'p2', name: isOfflineMode ? 'Bot Blue' : 'Opponent', pos: 1, isBot: isOfflineMode, color: '#3b82f6', avatar: isOfflineMode ? '🤖' : '👩‍🚀' }
     ]);
     const [turn, setTurn] = useState(0);
     const [dice, setDice] = useState<number | null>(null);
@@ -18,25 +24,76 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
     const [log, setLog] = useState<string[]>(["Welcome to Pixel Climber!"]);
 
     const currentPlayer = players[turn];
+    const isMyTurn = isHost ? (turn === 0) : (turn === 1); // Host is P1, Guest is P2
 
-    const toggleP2Mode = () => {
-        setPlayers(prev => {
-            const p2 = prev[1];
-            const isNowBot = !p2.isBot;
-            return [
-                prev[0],
-                { 
-                    ...p2, 
-                    isBot: isNowBot, 
-                    name: isNowBot ? 'Bot Blue' : 'Player 2',
-                    avatar: isNowBot ? '🤖' : '👩‍🚀'
+    // --- Networking Sync ---
+
+    // 1. Sync Logic (Host Broadcasts, Guest Listens)
+    useEffect(() => {
+        if (network) {
+            if (isGuest) {
+                network.onStateUpdate((state) => {
+                    setPlayers(state.players);
+                    setTurn(state.turn);
+                    setDice(state.dice);
+                    setIsMoving(state.isMoving);
+                    if (state.lastLog) setLog(prev => [state.lastLog, ...prev].slice(0, 5));
+                });
+            } else if (isHost) {
+                network.onActionReceived((action, payload) => {
+                    if (action === 'ROLL') {
+                        handleRoll();
+                    }
+                });
+            }
+        }
+    }, [network, isHost, isGuest]);
+
+    // 2. Broadcast (Host Only)
+    useEffect(() => {
+        if (isHost && network && !isOfflineMode) {
+            network.broadcastState({
+                players,
+                turn,
+                dice,
+                isMoving,
+                // We send log only when it changes effectively, handled by setState elsewhere but 
+                // for simple sync, we don't broadcast entire log array, just generic state.
+            });
+        }
+    }, [players, turn, dice, isMoving, isHost, isOfflineMode, network]);
+
+    // 3. Update P2 status if connection changes
+    useEffect(() => {
+        if (isHost) {
+            setPlayers(prev => {
+                const p2 = prev[1];
+                const shouldBeBot = isOfflineMode;
+                if (p2.isBot !== shouldBeBot) {
+                    return [
+                        prev[0],
+                        { ...p2, isBot: shouldBeBot, name: shouldBeBot ? 'Bot Blue' : 'Opponent', avatar: shouldBeBot ? '🤖' : '👩‍🚀' }
+                    ];
                 }
-            ];
-        });
-    };
+                return prev;
+            });
+        }
+    }, [isOfflineMode, isHost]);
 
-    const roll = () => {
+
+    // --- Game Logic ---
+
+    const handleRoll = () => {
+        // Guest sends request
+        if (isGuest && isConnected) {
+            if (!isMyTurn) return;
+            network?.sendAction('ROLL');
+            return;
+        }
+
+        // Host/Offline Logic
         if (isMoving || dice) return;
+        
         audioService.playRoll();
         setIsMoving(true);
         
@@ -57,6 +114,7 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
         let curr = currentPlayer.pos;
         const target = Math.min(100, curr + steps);
 
+        // Animate Step-by-Step
         for (let i = curr + 1; i <= target; i++) {
             setPlayers(prev => prev.map((p, idx) => idx === turn ? { ...p, pos: i } : p));
             audioService.playTick();
@@ -75,16 +133,18 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
         
         if (SNAKES[target]) {
             finalPos = SNAKES[target];
-            eventMsg = `GLITCH! Fell to ${finalPos}`;
+            eventMsg = `GLITCH! ${currentPlayer.name} fell to ${finalPos}`;
             audioService.playFailure();
         } else if (LADDERS[target]) {
             finalPos = LADDERS[target];
-            eventMsg = `POWER UP! Climbed to ${finalPos}`;
+            eventMsg = `POWER UP! ${currentPlayer.name} climbed to ${finalPos}`;
             audioService.playLevelUp();
         }
 
         if (finalPos !== target) {
             setLog(prev => [eventMsg, ...prev].slice(0, 5));
+            if (isHost && !isOfflineMode) network?.broadcastState({ players, turn, dice, isMoving, lastLog: eventMsg });
+            
             await new Promise(r => setTimeout(r, 500));
             setPlayers(prev => prev.map((p, idx) => idx === turn ? { ...p, pos: finalPos } : p));
         }
@@ -94,12 +154,13 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
         setTurn((turn + 1) % players.length);
     };
 
+    // Bot Auto-play
     useEffect(() => {
-        if (currentPlayer.isBot && !isMoving && !dice) {
-            const t = setTimeout(roll, 1500);
+        if (isHost && currentPlayer.isBot && !isMoving && !dice) {
+            const t = setTimeout(handleRoll, 1500);
             return () => clearTimeout(t);
         }
-    }, [turn, isMoving, dice, currentPlayer]);
+    }, [turn, isMoving, dice, currentPlayer, isHost]);
 
     const getCoords = (pos: number) => {
         const index = pos - 1;
@@ -142,9 +203,11 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                 </h1>
                 <div className="flex justify-center gap-4">
                      <p className="text-[10px] text-gray-500 uppercase tracking-widest font-pixel">STAGE 01</p>
-                     <button onClick={toggleP2Mode} className="text-[9px] bg-gray-800 px-3 py-1 rounded text-gray-400 hover:text-white uppercase font-bold flex items-center gap-1">
-                        P2: {players[1].isBot ? 'CPU' : 'HUMAN'} <RefreshCw size={10} />
-                     </button>
+                     {!isOfflineMode && (
+                        <div className="flex items-center gap-1 text-[9px] bg-green-900/40 text-green-400 px-2 py-1 rounded">
+                            <Wifi size={10} className="animate-pulse"/> ONLINE
+                        </div>
+                     )}
                 </div>
             </div>
             
@@ -214,7 +277,13 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                                 {currentPlayer.name}
                             </div>
                         </div>
-                        <button onClick={roll} disabled={currentPlayer.isBot || isMoving} className={`w-24 h-24 rounded-2xl flex items-center justify-center text-5xl pixel-border transition-all ${dice ? 'bg-white text-black scale-100 ring-4 ring-white/20' : 'bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-105 active:scale-95'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                        <button 
+                            onClick={handleRoll} 
+                            disabled={!isMyTurn || isMoving} 
+                            className={`w-24 h-24 rounded-2xl flex items-center justify-center text-5xl pixel-border transition-all 
+                                ${dice ? 'bg-white text-black scale-100 ring-4 ring-white/20' : 'bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-105 active:scale-95'} 
+                                disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
                             <span className="font-pixel">{dice ?? '?'}</span>
                         </button>
                     </div>

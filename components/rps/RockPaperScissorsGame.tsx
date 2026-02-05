@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { GameProps } from '../../types';
 import { audioService } from '../../services/audioService';
-import { Scissors, Scroll, Box, Trophy, RefreshCw, Cpu, User, Zap, Wifi } from 'lucide-react';
+import { Scissors, Scroll, Box, Trophy, RefreshCw, Cpu, User, Zap, Wifi, WifiOff, Loader2 } from 'lucide-react';
 
 type Choice = 'ROCK' | 'PAPER' | 'SCISSORS' | null;
 type Result = 'WIN' | 'LOSE' | 'DRAW' | null;
@@ -24,6 +24,9 @@ const COLORS = {
 const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) => {
     const isHost = !network || network.role === 'HOST' || network.role === 'OFFLINE';
     const isGuest = network && network.role === 'GUEST';
+    const isConnected = network?.isConnected ?? false;
+    // Determine if we are effectively playing offline
+    const isOfflineMode = !network || network.role === 'OFFLINE' || (network.role === 'HOST' && !isConnected);
 
     const [p1Choice, setP1Choice] = useState<Choice>(null);
     const [p2Choice, setP2Choice] = useState<Choice>(null);
@@ -32,6 +35,15 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
     const [countdown, setCountdown] = useState(3);
     const [score, setScore] = useState({ p1: 0, p2: 0 });
     const [streak, setStreak] = useState(0);
+
+    // Auto-switch to AI if opponent disconnects while waiting
+    useEffect(() => {
+        if (isHost && gameState === 'LOCKED' && isOfflineMode) {
+            // Disconnected mid-turn
+            const botChoice = CHOICES[Math.floor(Math.random() * 3)];
+            setP2Choice(botChoice);
+        }
+    }, [isOfflineMode, isHost, gameState]);
 
     // Host Logic: Determine Result
     const determineWinner = (c1: Choice, c2: Choice) => {
@@ -65,12 +77,11 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
         if (network) {
             if (isGuest) {
                 network.onStateUpdate((state) => {
-                    // Sync generic state, but P2 (Host) choice remains hidden until reveal
                     if (state.phase === 'REVEAL') {
-                        setP1Choice(state.p1Choice); // Actually Guest's choice echoed back
-                        setP2Choice(state.p2Choice); // Host's choice revealed
-                        setResult(state.result === 'WIN' ? 'LOSE' : (state.result === 'LOSE' ? 'WIN' : 'DRAW')); // Invert result
-                        setScore({ p1: state.score.p2, p2: state.score.p1 }); // Invert score
+                        setP1Choice(state.p1Choice); // Guest choice echoed back
+                        setP2Choice(state.p2Choice); // Host choice revealed
+                        setResult(state.result === 'WIN' ? 'LOSE' : (state.result === 'LOSE' ? 'WIN' : 'DRAW')); 
+                        setScore({ p1: state.score.p2, p2: state.score.p1 }); 
                         setGameState('REVEAL');
                     } else if (state.phase === 'COUNTDOWN') {
                         setGameState('COUNTDOWN');
@@ -82,7 +93,7 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
             } else if (isHost) {
                 network.onActionReceived((action, payload) => {
                     if (action === 'CHOOSE') {
-                        setP2Choice(payload.choice); // Guest is P2 for Host logic
+                        setP2Choice(payload.choice); 
                     } else if (action === 'RESET') {
                         resetRound();
                     }
@@ -96,9 +107,9 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
         if (isHost && gameState === 'WAITING' && p1Choice && p2Choice) {
             setGameState('COUNTDOWN');
             setCountdown(3);
-            if (network) network.broadcastState({ phase: 'COUNTDOWN', countdown: 3 });
+            if (network && !isOfflineMode) network.broadcastState({ phase: 'COUNTDOWN', countdown: 3 });
         }
-    }, [isHost, gameState, p1Choice, p2Choice, network]);
+    }, [isHost, gameState, p1Choice, p2Choice, network, isOfflineMode]);
 
     // Countdown Timer (Host Only drives it)
     useEffect(() => {
@@ -107,7 +118,7 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
                 const t = setTimeout(() => {
                     const nextVal = countdown - 1;
                     setCountdown(nextVal);
-                    if (network) network.broadcastState({ phase: 'COUNTDOWN', countdown: nextVal });
+                    if (network && !isOfflineMode) network.broadcastState({ phase: 'COUNTDOWN', countdown: nextVal });
                     audioService.playTick();
                 }, 1000);
                 return () => clearTimeout(t);
@@ -115,11 +126,11 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
                 determineWinner(p1Choice, p2Choice);
             }
         }
-    }, [isHost, gameState, countdown, p1Choice, p2Choice]);
+    }, [isHost, gameState, countdown, p1Choice, p2Choice, isOfflineMode]);
 
     // Broadcast Reveal
     useEffect(() => {
-        if (isHost && gameState === 'REVEAL' && network) {
+        if (isHost && gameState === 'REVEAL' && network && !isOfflineMode) {
             network.broadcastState({
                 phase: 'REVEAL',
                 p1Choice: p2Choice, // Send Guest's choice as their P1
@@ -128,25 +139,24 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
                 score
             });
         }
-    }, [isHost, gameState, result, score, network]);
+    }, [isHost, gameState, result, score, network, isOfflineMode]);
 
 
     const playRound = (choice: Choice) => {
         if (gameState !== 'WAITING') return;
 
         if (isGuest) {
-            setP1Choice(choice); // Visually lock locally
-            setGameState('LOCKED'); // Waiting for host
+            setP1Choice(choice); 
+            setGameState('LOCKED'); 
             network?.sendAction('CHOOSE', { choice });
         } else {
             // Host Choice
             setP1Choice(choice);
-            if (!network || network.role === 'OFFLINE') {
-                // Offline Bot Mode
+            if (isOfflineMode) {
                 const botChoice = CHOICES[Math.floor(Math.random() * 3)];
                 setP2Choice(botChoice);
             } else {
-                 setGameState('LOCKED'); // Wait for guest
+                 setGameState('LOCKED'); 
             }
         }
     };
@@ -158,11 +168,25 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
         setGameState('WAITING');
         setCountdown(3);
         if (isGuest) { network?.sendAction('RESET'); }
-        else if (isHost && shouldBroadcast && network) { network.broadcastState({ phase: 'WAITING' }); }
+        else if (isHost && shouldBroadcast && network && !isOfflineMode) { network.broadcastState({ phase: 'WAITING' }); }
     };
 
     return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] p-4 max-w-4xl mx-auto animate-in fade-in select-none">
+            <style>{`
+                @keyframes select-pop {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.15); }
+                    100% { transform: scale(1.1); }
+                }
+                @keyframes winner-shimmer {
+                    0% { filter: brightness(1) drop-shadow(0 0 10px rgba(255,255,255,0.4)); transform: scale(1.25) rotate(var(--rot)); }
+                    50% { filter: brightness(1.3) drop-shadow(0 0 40px rgba(255,255,255,0.8)); transform: scale(1.35) rotate(var(--rot)); }
+                    100% { filter: brightness(1) drop-shadow(0 0 10px rgba(255,255,255,0.4)); transform: scale(1.25) rotate(var(--rot)); }
+                }
+                .anim-select { animation: select-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+                .anim-winner { animation: winner-shimmer 2s ease-in-out infinite; }
+            `}</style>
             
             <div className="flex justify-between w-full max-w-xl mb-12 items-end">
                 <div className="flex flex-col items-center gap-2">
@@ -174,15 +198,27 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
                 </div>
 
                 <div className="mb-4 flex flex-col items-center">
-                    {network && network.role !== 'OFFLINE' && <Wifi className="text-green-500 animate-pulse mb-2"/>}
-                    <div className="text-[10px] uppercase font-black text-gray-500 tracking-[0.3em] mb-1">VS</div>
+                    {!isOfflineMode ? (
+                         <div className="flex flex-col items-center gap-1">
+                             <Wifi className="text-green-500 animate-pulse" size={24}/>
+                             <span className="text-[9px] text-green-400 font-bold uppercase tracking-widest">Live</span>
+                         </div>
+                    ) : (
+                        <div className="flex flex-col items-center gap-1">
+                             <Cpu className="text-rose-500" size={24}/>
+                             <span className="text-[9px] text-rose-400 font-bold uppercase tracking-widest">AI Mode</span>
+                        </div>
+                    )}
+                    <div className="text-[10px] uppercase font-black text-gray-500 tracking-[0.3em] mt-2">VS</div>
                 </div>
 
                 <div className="flex flex-col items-center gap-2">
                     <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(244,63,94,0.3)]">
-                        {network && network.role !== 'OFFLINE' ? <User className="text-rose-400" /> : <Cpu className="text-rose-400" />}
+                        {!isOfflineMode ? <User className="text-rose-400" /> : <Cpu className="text-rose-400" />}
                     </div>
-                    <div className="text-white font-black uppercase tracking-widest text-sm">{isHost ? (network?.isConnected ? 'Guest' : 'CPU') : 'Host'}</div>
+                    <div className="text-white font-black uppercase tracking-widest text-sm">
+                        {!isOfflineMode ? (isHost ? 'Guest' : 'Host') : 'CPU'}
+                    </div>
                     <div className="text-3xl font-black text-rose-400">{score.p2}</div>
                 </div>
             </div>
@@ -196,19 +232,36 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
                 
                 {gameState === 'REVEAL' && (
                     <div className="flex items-center gap-8 sm:gap-12 animate-in zoom-in duration-300">
-                        <div className={`relative p-6 sm:p-8 rounded-[2rem] ${COLORS[p1Choice!]} shadow-2xl ring-4 ring-white transition-all duration-500 ${result === 'WIN' ? 'scale-125 z-10 rotate-12' : 'scale-90 opacity-50 grayscale rotate-0'}`}>
+                        <div 
+                            className={`relative p-6 sm:p-8 rounded-[2rem] ${COLORS[p1Choice!]} shadow-2xl ring-4 ring-white transition-all duration-500 
+                            ${result === 'WIN' ? 'z-10 anim-winner' : 'scale-90 opacity-50 grayscale rotate-0'}`}
+                            style={{ '--rot': '12deg' } as React.CSSProperties}
+                        >
                             {ICONS[p1Choice!]}
                         </div>
                         <div className="text-4xl font-black text-white italic z-20">VS</div>
-                        <div className={`relative p-6 sm:p-8 rounded-[2rem] ${COLORS[p2Choice!]} shadow-2xl ring-4 ring-white transition-all duration-500 ${result === 'LOSE' ? 'scale-125 z-10 -rotate-12' : 'scale-90 opacity-50 grayscale rotate-0'}`}>
+                        <div 
+                            className={`relative p-6 sm:p-8 rounded-[2rem] ${COLORS[p2Choice!]} shadow-2xl ring-4 ring-white transition-all duration-500 
+                            ${result === 'LOSE' ? 'z-10 anim-winner' : 'scale-90 opacity-50 grayscale rotate-0'}`}
+                            style={{ '--rot': '-12deg' } as React.CSSProperties}
+                        >
                             {ICONS[p2Choice!]}
                         </div>
                     </div>
                 )}
                 
                 {(gameState === 'WAITING' || gameState === 'LOCKED') && (
-                    <div className="text-gray-600 font-black uppercase tracking-[0.5em] text-sm animate-pulse">
-                        {gameState === 'LOCKED' ? 'Waiting for Opponent...' : 'Select Your Move'}
+                    <div className="flex flex-col items-center gap-2">
+                        {gameState === 'LOCKED' ? (
+                            <div className="flex items-center gap-2 text-yellow-400 font-black uppercase tracking-widest">
+                                <Loader2 className="animate-spin" size={20}/> 
+                                {isOfflineMode || p2Choice ? 'Processing...' : 'Waiting for Opponent...'}
+                            </div>
+                        ) : (
+                             <div className="text-gray-600 font-black uppercase tracking-[0.5em] text-sm animate-pulse">
+                                Select Your Move
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -232,7 +285,7 @@ const RockPaperScissorsGame: React.FC<GameProps> = ({ playerName, onGameEnd, net
                                 onClick={() => playRound(c)}
                                 disabled={gameState !== 'WAITING'}
                                 className={`group relative p-6 rounded-3xl border-4 transition-all flex flex-col items-center gap-2 disabled:cursor-not-allowed
-                                    ${isSelected ? 'border-indigo-400 bg-gray-700 scale-110 shadow-[0_0_30px_rgba(99,102,241,0.4)] ring-2 ring-white z-10' : 'border-gray-700 bg-gray-800/50 hover:bg-gray-700 hover:border-white/20 disabled:opacity-50'}
+                                    ${isSelected ? 'border-indigo-400 bg-gray-700 anim-select shadow-[0_0_30px_rgba(99,102,241,0.4)] ring-2 ring-white z-10' : 'border-gray-700 bg-gray-800/50 hover:bg-gray-700 hover:border-white/20 disabled:opacity-50'}
                                 `}
                             >
                                 <div className={`transition-colors ${isSelected ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>{ICONS[c]}</div>

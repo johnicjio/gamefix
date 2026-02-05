@@ -2,26 +2,33 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GameProps } from '../../types';
 import { audioService } from '../../services/audioService';
-import { RefreshCw, User, Cpu, Trophy, Users, Loader2, Sparkles, Wifi } from 'lucide-react';
+import { RefreshCw, User, Cpu, Trophy, Users, Loader2, Sparkles, Wifi, WifiOff } from 'lucide-react';
 
 type PlayerType = 'X' | 'O' | null;
 
 const TicTacToeGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) => {
     const isHost = !network || network.role === 'HOST' || network.role === 'OFFLINE';
     const isGuest = network && network.role === 'GUEST';
+    
+    // Check if we are actually connected in a multiplayer context
+    const isConnected = network?.isConnected ?? false;
+    const isOfflineMode = !network || network.role === 'OFFLINE' || (network.role === 'HOST' && !isConnected);
 
     const [board, setBoard] = useState<PlayerType[]>(Array(9).fill(null));
     const [isXNext, setIsXNext] = useState<boolean>(true);
     const [winner, setWinner] = useState<PlayerType | 'Draw'>(null);
     const [winningLine, setWinningLine] = useState<number[] | null>(null);
-    const [gameMode, setGameMode] = useState<'PVP' | 'PVE'>('PVE'); // PVE default for offline, PVP implied for online
+    const [gameMode, setGameMode] = useState<'PVP' | 'PVE'>('PVE'); 
     const [isBotThinking, setIsBotThinking] = useState(false);
 
+    // Auto-switch game mode based on connection
     useEffect(() => {
-        if (network && network.role !== 'OFFLINE') {
+        if (!isOfflineMode) {
              setGameMode('PVP');
+        } else {
+             setGameMode('PVE');
         }
-    }, [network]);
+    }, [isOfflineMode]);
 
     const checkWinner = useCallback((squares: PlayerType[]) => {
         const lines = [
@@ -63,22 +70,22 @@ const TicTacToeGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) 
     }, [network, isHost, isGuest, winner, isXNext]);
 
     useEffect(() => {
-        if (isHost && network && network.role !== 'OFFLINE') {
+        if (isHost && !isOfflineMode && network) {
             network.broadcastState({ board, isXNext, winner, winningLine });
         }
-    }, [board, isXNext, winner, winningLine, isHost, network]);
+    }, [board, isXNext, winner, winningLine, isHost, isOfflineMode, network]);
 
 
     const handleClick = (i: number, isRemote = false) => {
         if (board[i] || winner) return;
 
         // Turn Logic for Multiplayer
-        if (network && network.role !== 'OFFLINE') {
+        if (!isOfflineMode) {
             if (isHost && !isXNext && !isRemote) return; // Host is X, if O's turn, Host waits
             if (isGuest && isXNext) return; // Guest is O, if X's turn, Guest waits
             
             if (isGuest && !isXNext) {
-                network.sendAction('CLICK', { index: i });
+                network?.sendAction('CLICK', { index: i });
                 return;
             }
         } else {
@@ -98,7 +105,6 @@ const TicTacToeGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) 
             setWinningLine(result.line);
             if (result.winner !== 'Draw') {
                 audioService.playCelebration();
-                // Determine winner name logic simplified
             } else {
                 audioService.playFailure();
             }
@@ -106,7 +112,7 @@ const TicTacToeGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) 
     };
 
     const resetGame = () => {
-        if (isGuest) { network?.sendAction('RESET'); return; }
+        if (isGuest && isConnected) { network?.sendAction('RESET'); return; }
         
         setBoard(Array(9).fill(null));
         setIsXNext(true);
@@ -115,9 +121,10 @@ const TicTacToeGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) 
         audioService.playChime();
     };
 
-    // Bot Move (Only for Host in PVE mode)
+    // Bot Move (Only for Host in PVE mode or Offline)
     useEffect(() => {
-        if (gameMode === 'PVE' && !isXNext && !winner && network?.role === 'OFFLINE') {
+        // Trigger bot if it's PVE, O's turn, game not over, and we are locally controlling O (Host/Offline)
+        if (gameMode === 'PVE' && !isXNext && !winner && isOfflineMode) {
             setIsBotThinking(true);
             const timer = setTimeout(() => {
                 const availableIndices = board.map((val, idx) => val === null ? idx : null).filter(val => val !== null) as number[];
@@ -138,19 +145,7 @@ const TicTacToeGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) 
             }, 600);
             return () => clearTimeout(timer);
         }
-    }, [isXNext, board, gameMode, winner, checkWinner, network]);
-
-    const getWinningLineCoords = () => {
-        if (!winningLine) return null;
-        const start = winningLine[0];
-        const end = winningLine[2];
-        const getXY = (idx: number) => ({ x: (idx % 3) * 100 + 50, y: Math.floor(idx / 3) * 100 + 50 });
-        const p1 = getXY(start);
-        const p2 = getXY(end);
-        return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
-    };
-
-    const lineCoords = getWinningLineCoords();
+    }, [isXNext, board, gameMode, winner, checkWinner, isOfflineMode]);
 
     return (
         <div className="flex flex-col items-center justify-center p-4 min-h-[60vh] font-pixel animate-in fade-in duration-700">
@@ -171,13 +166,17 @@ const TicTacToeGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) 
                     </div>
 
                     <div className="flex flex-col items-center">
-                        {(!network || network.role === 'OFFLINE') && (
+                        {isOfflineMode ? (
                             <div className="bg-white/5 backdrop-blur-md p-1.5 rounded-2xl flex gap-1 border border-white/5">
                                 <button onClick={() => { setGameMode('PVE'); resetGame(); }} className={`p-2.5 rounded-xl transition-all ${gameMode === 'PVE' ? 'bg-indigo-500 text-white' : 'text-gray-500 hover:text-gray-300'}`}><Cpu size={18}/></button>
                                 <button onClick={() => { setGameMode('PVP'); resetGame(); }} className={`p-2.5 rounded-xl transition-all ${gameMode === 'PVP' ? 'bg-pink-500 text-white' : 'text-gray-500 hover:text-gray-300'}`}><Users size={18}/></button>
                             </div>
+                        ) : (
+                            <div className="flex flex-col items-center gap-1">
+                                <Wifi className="text-green-500 animate-pulse" />
+                                <span className="text-[8px] text-green-400 font-bold uppercase">Connected</span>
+                            </div>
                         )}
-                        {network && network.role !== 'OFFLINE' && <Wifi className="text-green-500 animate-pulse" />}
                     </div>
 
                     <div className={`flex flex-col items-end transition-all duration-300 ${!isXNext && !winner ? 'scale-110' : 'opacity-40 grayscale'}`}>
@@ -185,7 +184,9 @@ const TicTacToeGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) 
                             <span className="text-[9px] uppercase tracking-widest font-black text-pink-400 neon-text-pink">Player O</span>
                             <div className="w-2 h-2 rounded-full bg-pink-400 animate-pulse neon-border-pink"></div>
                         </div>
-                        <span className="text-white text-base font-bold truncate max-w-[100px]">{isHost ? (network?.isConnected ? 'Guest' : 'CPU') : playerName}</span>
+                        <span className="text-white text-base font-bold truncate max-w-[100px]">
+                            {!isOfflineMode ? (isHost ? 'Guest' : 'Host') : 'CPU'}
+                        </span>
                     </div>
                 </div>
 
@@ -211,7 +212,6 @@ const TicTacToeGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) 
                             );
                         })}
                     </div>
-                    {/* SVG Line omitted for brevity, same as previous */}
                 </div>
 
                 {/* Footer Controls & Status */}

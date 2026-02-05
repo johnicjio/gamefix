@@ -285,6 +285,7 @@ const App: React.FC = () => {
                   ${isPeerConnected ? 'bg-green-500/10 border-green-500 text-green-400' : 'bg-yellow-500/10 border-yellow-500 text-yellow-400'}
               `}>
                   {isPeerConnected ? <Wifi size={12}/> : <WifiOff size={12} className="animate-pulse"/>}
+                  {/* Only show "SEARCHING" if we are a guest and not connected yet, otherwise show role status */}
                   {networkRole} MODE: {isPeerConnected ? 'ONLINE' : 'SEARCHING...'}
               </div>
           )}
