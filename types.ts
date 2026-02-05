@@ -10,7 +10,8 @@ export enum GameType {
   TIC_TAC_TOE = 'TIC_TAC_TOE',
   CARROM = 'CARROM',
   SEANCE = 'SEANCE',
-  NPAT = 'NPAT'
+  NPAT = 'NPAT',
+  ROCK_PAPER_SCISSORS = 'ROCK_PAPER_SCISSORS'
 }
 
 export enum LudoColor {
@@ -43,12 +44,24 @@ export interface QuizChallenge {
 // Added missing types for Gemini and Networking services
 export type ImageSize = "1K" | "2K" | "4K";
 
+// --- MULTIPLAYER TYPES ---
+
+export interface NetworkPayload {
+    type: 'ACTION' | 'STATE_SYNC' | 'CHAT' | 'HANDSHAKE';
+    data: any;
+    senderId?: string;
+    timestamp?: number;
+}
+
 export interface NetworkManager {
     role: 'HOST' | 'GUEST' | 'OFFLINE';
     myId: string;
-    gameState?: any;
-    sendAction: (payload: any) => void;
-    registerActionHandler: (handler: (payload: any, senderId: string) => void) => void;
+    hostId?: string;
+    isConnected: boolean;
+    sendAction: (actionType: string, payload?: any) => void;
+    broadcastState: (state: any) => void;
+    onStateUpdate: (callback: (state: any) => void) => void;
+    onActionReceived: (callback: (actionType: string, payload: any, senderId: string) => void) => void;
 }
 
 export interface GameProps {

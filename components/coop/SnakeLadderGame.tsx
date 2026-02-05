@@ -2,12 +2,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameProps } from '../../types';
 import { audioService } from '../../services/audioService';
-import { User, Cpu, Dice5, Trophy, ArrowUpCircle, Ghost, AlertTriangle } from 'lucide-react';
+import { User, Cpu, ArrowUpCircle, Ghost, AlertTriangle, RefreshCw } from 'lucide-react';
 
 const SNAKES: Record<number, number> = { 17:7, 54:34, 62:18, 64:60, 87:24, 93:73, 95:75, 99:80 };
 const LADDERS: Record<number, number> = { 1:38, 4:14, 9:31, 21:42, 28:84, 36:44, 51:67, 71:91, 80:100 };
-
-const PIXEL_AVATARS = ['👾', '🤖', '👻', '🐶', '🐱', '🦊', '🐯', '🦁'];
 
 const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
     const [players, setPlayers] = useState([
@@ -20,6 +18,22 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
     const [log, setLog] = useState<string[]>(["Welcome to Pixel Climber!"]);
 
     const currentPlayer = players[turn];
+
+    const toggleP2Mode = () => {
+        setPlayers(prev => {
+            const p2 = prev[1];
+            const isNowBot = !p2.isBot;
+            return [
+                prev[0],
+                { 
+                    ...p2, 
+                    isBot: isNowBot, 
+                    name: isNowBot ? 'Bot Blue' : 'Player 2',
+                    avatar: isNowBot ? '🤖' : '👩‍🚀'
+                }
+            ];
+        });
+    };
 
     const roll = () => {
         if (isMoving || dice) return;
@@ -85,7 +99,7 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
             const t = setTimeout(roll, 1500);
             return () => clearTimeout(t);
         }
-    }, [turn, isMoving, dice]);
+    }, [turn, isMoving, dice, currentPlayer]);
 
     const getCoords = (pos: number) => {
         const index = pos - 1;
@@ -110,7 +124,7 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
     }, []);
 
     return (
-        <div className="flex flex-col items-center w-full max-w-6xl mx-auto p-4 gap-6 select-none">
+        <div className="flex flex-col items-center w-full max-w-6xl mx-auto p-4 gap-6 select-none animate-in fade-in">
             <style>{`
                 @keyframes float {
                     0% { transform: translateY(0px); }
@@ -126,7 +140,12 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                 <h1 className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500 font-pixel uppercase tracking-tighter italic">
                     Pixel Climber
                 </h1>
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-pixel">Version 8-BIT // STAGE 01</p>
+                <div className="flex justify-center gap-4">
+                     <p className="text-[10px] text-gray-500 uppercase tracking-widest font-pixel">STAGE 01</p>
+                     <button onClick={toggleP2Mode} className="text-[9px] bg-gray-800 px-3 py-1 rounded text-gray-400 hover:text-white uppercase font-bold flex items-center gap-1">
+                        P2: {players[1].isBot ? 'CPU' : 'HUMAN'} <RefreshCw size={10} />
+                     </button>
+                </div>
             </div>
             
             <div className="flex flex-col lg:flex-row gap-8 items-start justify-center w-full">
@@ -166,7 +185,7 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                          const { x, y } = getCoords(p.pos);
                          return (
                              <div key={p.id} className="absolute w-[10%] h-[10%] flex items-center justify-center transition-all duration-300 z-20" style={{ left: `${x * 10}%`, top: `${y * 10}%`, animation: isMoving && turn === i ? 'float 0.3s infinite ease-in-out' : 'none' }}>
-                                 <div className="w-8 h-8 flex items-center justify-center text-xl bg-gray-800 rounded-lg pixel-border border-2" style={{ borderColor: p.color }}>{p.avatar}</div>
+                                 <div className="w-8 h-8 flex items-center justify-center text-xl bg-gray-800 rounded-lg pixel-border border-2 shadow-lg" style={{ borderColor: p.color }}>{p.avatar}</div>
                              </div>
                          );
                     })}
@@ -178,7 +197,10 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                             <div key={p.id} className={`p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${turn === i ? 'border-white bg-gray-800 scale-105' : 'border-gray-800 bg-black opacity-50'}`}>
                                 <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-gray-900 text-xl border-2" style={{ borderColor: p.color }}>{p.avatar}</div>
                                 <div className="flex-1 overflow-hidden">
-                                    <div className="text-[8px] font-pixel text-gray-500 truncate uppercase">{p.name}</div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-[8px] font-pixel text-gray-500 truncate uppercase">{p.name}</div>
+                                        {p.isBot ? <Cpu size={10} className="text-gray-600"/> : <User size={10} className="text-gray-600"/>}
+                                    </div>
                                     <div className="text-xs font-pixel text-white">TILE {p.pos}</div>
                                 </div>
                             </div>

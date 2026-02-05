@@ -16,10 +16,8 @@ const EndScreen: React.FC<EndScreenProps> = ({ winnerName, isHost, onReset, onRe
         switch (gameType) {
             case GameType.LUDO: return "Ludo Classic";
             case GameType.SNAKE: return "Pixel Climber";
-            case GameType.WORD: return "Word Rush";
-            case GameType.TIC_TAC_TOE: return "Neon Tic-Tac";
-            case GameType.CANDY_LAND: return "Candy Land";
-            case GameType.BRAWLER: return "Pixel Brawlers";
+            case GameType.TIC_TAC_TOE: return "Neon Tac";
+            case GameType.ROCK_PAPER_SCISSORS: return "RPS Duel";
             default: return "The Arena";
         }
     };

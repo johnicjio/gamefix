@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import LudoBoard from './LudoBoard';
 import { LudoColor, Player, Piece, GameProps } from '../../types';
 import { canMove, getSmartAIMove } from './ludoLogic';
-import { Dice5, Play, RotateCcw, Cpu, User, Check } from 'lucide-react';
+import { Dice5, Play, RotateCcw, Cpu, User, Check, Loader2, Wifi } from 'lucide-react';
 import { audioService } from '../../services/audioService';
 
 const COLORS = [LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE, LudoColor.RED];
@@ -15,13 +15,16 @@ const BOT_PROFILES: Record<string, { name: string; avatar: string }> = {
     [LudoColor.RED]: { name: 'Bot Red', avatar: '🦊' },
 };
 
-const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
+const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) => {
+    const isHost = !network || network.role === 'HOST' || network.role === 'OFFLINE';
+    const isGuest = network && network.role === 'GUEST';
+
     const [gamePhase, setGamePhase] = useState<'SETUP' | 'PLAYING'>('SETUP');
     const [players, setPlayers] = useState<Player[]>([
         { id: 'p1', name: playerName, color: LudoColor.GREEN, isBot: false, avatar: '🤴' },
-        { id: 'p2', name: BOT_PROFILES[LudoColor.YELLOW].name, color: LudoColor.YELLOW, isBot: true, avatar: BOT_PROFILES[LudoColor.YELLOW].avatar },
-        { id: 'p3', name: BOT_PROFILES[LudoColor.BLUE].name, color: LudoColor.BLUE, isBot: true, avatar: BOT_PROFILES[LudoColor.BLUE].avatar },
-        { id: 'p4', name: BOT_PROFILES[LudoColor.RED].name, color: LudoColor.RED, isBot: true, avatar: BOT_PROFILES[LudoColor.RED].avatar },
+        { id: 'p2', name: isGuest ? 'Opponent' : 'Bot Yellow', color: LudoColor.YELLOW, isBot: !isGuest, avatar: isGuest ? '👤' : '🐯' },
+        { id: 'p3', name: 'Bot Blue', color: LudoColor.BLUE, isBot: true, avatar: '🤖' },
+        { id: 'p4', name: 'Bot Red', color: LudoColor.RED, isBot: true, avatar: '🦊' },
     ]);
     const [pieces, setPieces] = useState<Piece[]>([]);
     const [currentTurn, setCurrentTurn] = useState(0);
@@ -31,7 +34,62 @@ const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
     const [movingPieceId, setMovingPieceId] = useState<string | null>(null);
 
     const currentPlayer = players[currentTurn];
-    const isMyTurn = !currentPlayer.isBot;
+    
+    // Authorization Logic
+    // Local: !isBot. Host: Me (Green) or Bots. Guest: Me (Yellow).
+    const isMyTurn = isHost 
+        ? (!currentPlayer.isBot && currentPlayer.color === LudoColor.GREEN) // Host controls Green
+        : (!currentPlayer.isBot && currentPlayer.color === LudoColor.YELLOW); // Guest controls Yellow
+
+    const isBotThinking = currentPlayer.isBot && !isRolling && !isMoving;
+
+    // --- Networking Hooks ---
+    useEffect(() => {
+        if (network) {
+            // Guest Listeners
+            if (isGuest) {
+                network.onStateUpdate((state) => {
+                    setGamePhase(state.gamePhase);
+                    setPlayers(state.players);
+                    setPieces(state.pieces);
+                    setCurrentTurn(state.currentTurn);
+                    setDiceValue(state.diceValue);
+                    setIsRolling(state.isRolling);
+                    setIsMoving(state.isMoving);
+                    setMovingPieceId(state.movingPieceId);
+                });
+            } 
+            // Host Action Listeners
+            else if (isHost) {
+                network.onActionReceived((action, payload) => {
+                    if (action === 'ROLL') {
+                        handleRoll();
+                    } else if (action === 'MOVE') {
+                        const piece = pieces.find(p => p.id === payload.pieceId);
+                        if (piece) handleMove(piece);
+                    } else if (action === 'SETUP_READY') {
+                        startNewGame();
+                    }
+                });
+            }
+        }
+    }, [network, pieces, isHost, isGuest]);
+
+    // Broadcast State (Host Only)
+    useEffect(() => {
+        if (isHost && network && gamePhase === 'PLAYING') {
+            network.broadcastState({
+                gamePhase,
+                players,
+                pieces,
+                currentTurn,
+                diceValue,
+                isRolling,
+                isMoving,
+                movingPieceId
+            });
+        }
+    }, [isHost, pieces, currentTurn, diceValue, isRolling, isMoving, movingPieceId, gamePhase]);
 
     const startNewGame = () => {
         const p: Piece[] = [];
@@ -45,30 +103,17 @@ const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
         audioService.playLevelUp();
     };
 
-    const handleColorSelect = (selectedColor: LudoColor) => {
-        setPlayers(prev => prev.map(p => {
-            // Set the selected color to be the Human Player
-            if (p.color === selectedColor) {
-                return { ...p, isBot: false, name: playerName, avatar: '🤴' };
-            }
-            // Reset the previous human player (if it was me) back to a Bot
-            if (!p.isBot && p.name === playerName) {
-                return { 
-                    ...p, 
-                    isBot: true, 
-                    name: BOT_PROFILES[p.color].name, 
-                    avatar: BOT_PROFILES[p.color].avatar 
-                };
-            }
-            return p;
-        }));
-        audioService.playTick();
-    };
-
+    // Only Host runs logic. Guest sends actions.
     const handleRoll = () => {
+        if (isGuest) {
+            network?.sendAction('ROLL');
+            return;
+        }
+
         if (isRolling || isMoving || diceValue !== null) return;
         setIsRolling(true);
         audioService.playRoll(); 
+        
         setTimeout(() => {
             const val = Math.floor(Math.random() * 6) + 1;
             setDiceValue(val);
@@ -86,6 +131,11 @@ const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
     };
 
     const handleMove = async (piece: Piece) => {
+        if (isGuest) {
+            network?.sendAction('MOVE', { pieceId: piece.id });
+            return;
+        }
+
         if (isMoving || diceValue === null) return;
         setIsMoving(true);
         setMovingPieceId(piece.id);
@@ -98,7 +148,7 @@ const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
             const currentStep = startPos + i;
             setPieces(prev => prev.map(p => p.id === piece.id ? { ...p, position: currentStep } : p));
             audioService.playTick();
-            await new Promise(r => setTimeout(r, 180)); // Slightly slower for better animation visibility
+            await new Promise(r => setTimeout(r, 180));
         }
 
         let turnContinues = (diceValue === 6);
@@ -144,9 +194,9 @@ const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
     };
 
     useEffect(() => {
-        if (gamePhase === 'PLAYING' && currentPlayer.isBot) {
+        if (isHost && gamePhase === 'PLAYING' && currentPlayer.isBot) {
             if (diceValue === null && !isRolling && !isMoving) {
-                setTimeout(handleRoll, 1000);
+                setTimeout(handleRoll, 1500);
             } else if (diceValue !== null && !isMoving) {
                 const move = getSmartAIMove(
                     pieces.filter(p => p.color === currentPlayer.color), 
@@ -155,11 +205,11 @@ const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                     currentPlayer.color
                 );
                 if (move) {
-                    setTimeout(() => handleMove(move.piece), 800);
+                    setTimeout(() => handleMove(move.piece), 1200);
                 }
             }
         }
-    }, [currentTurn, diceValue, gamePhase, isRolling, isMoving]);
+    }, [currentTurn, diceValue, gamePhase, isRolling, isMoving, isHost]);
 
     if (gamePhase === 'SETUP') {
         return (
@@ -167,60 +217,32 @@ const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                 <div className="bg-gray-900 p-8 sm:p-10 rounded-[3rem] border border-gray-800 shadow-2xl max-w-2xl w-full">
                     <h2 className="text-3xl font-black text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 uppercase tracking-widest font-pixel">Arena Setup</h2>
                     
-                    {/* Color Selection */}
-                    <div className="mb-10">
-                        <div className="text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">CHOOSE YOUR TEAM</div>
-                        <div className="flex justify-center gap-4">
-                            {COLORS.map((c) => {
-                                const p = players.find(pl => pl.color === c);
-                                const isMe = p && !p.isBot && p.name === playerName;
-                                
-                                const bgColors = {
-                                    [LudoColor.GREEN]: 'bg-green-500 hover:bg-green-400',
-                                    [LudoColor.YELLOW]: 'bg-yellow-400 hover:bg-yellow-300',
-                                    [LudoColor.BLUE]: 'bg-blue-500 hover:bg-blue-400',
-                                    [LudoColor.RED]: 'bg-red-500 hover:bg-red-400',
-                                };
-
-                                return (
-                                    <button
-                                        key={c}
-                                        onClick={() => handleColorSelect(c)}
-                                        className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all shadow-lg border-4 
-                                            ${isMe ? 'scale-110 ring-4 ring-white border-white' : 'scale-100 opacity-60 hover:opacity-100 border-transparent'}
-                                            ${bgColors[c]}
-                                        `}
-                                    >
-                                        {isMe ? '🤴' : BOT_PROFILES[c].avatar}
-                                        {isMe && <div className="absolute -top-2 -right-2 bg-white text-black p-0.5 rounded-full"><Check size={12} strokeWidth={4}/></div>}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* Player Grid */}
+                    {/* Setup is simplified for Multiplayer for now: Fixed slots */}
                     <div className="grid grid-cols-2 gap-4 mb-10">
                         {players.map((p, i) => (
-                            <div key={p.color} className={`p-4 rounded-[2rem] border-2 flex flex-col items-center gap-2 transition-all ${p.isBot ? 'bg-gray-800/30 border-gray-800' : 'bg-indigo-600/10 border-indigo-500 shadow-lg shadow-indigo-500/10'}`}>
+                            <div key={p.color} className={`p-4 rounded-[2rem] border-2 flex flex-col items-center gap-2 transition-all 
+                                ${p.color === LudoColor.GREEN ? 'bg-green-900/20 border-green-500' : 
+                                  p.color === LudoColor.YELLOW ? 'bg-yellow-900/20 border-yellow-500' : 'bg-gray-800/30 border-gray-800'}
+                            `}>
                                 <div className="text-2xl">{p.avatar}</div>
                                 <div className="font-bold text-[10px] truncate w-full text-center uppercase tracking-widest text-gray-400">{p.name}</div>
-                                <button 
-                                    onClick={() => setPlayers(prev => prev.map((pl, idx) => idx === i ? { ...pl, isBot: !pl.isBot, name: !pl.isBot ? playerName : BOT_PROFILES[pl.color].name, avatar: !pl.isBot ? '🤴' : BOT_PROFILES[pl.color].avatar } : pl))}
-                                    className="text-[9px] font-black uppercase tracking-widest bg-black/40 px-4 py-1.5 rounded-full hover:bg-black/60 transition-colors"
-                                >
-                                    {p.isBot ? <span className="flex items-center gap-1"><Cpu size={12}/> BOT</span> : <span className="flex items-center gap-1"><User size={12}/> HUMAN</span>}
-                                </button>
+                                <div className="text-[9px] font-black uppercase tracking-widest bg-black/40 px-4 py-1.5 rounded-full">
+                                    {isGuest && i === 1 ? 'YOU' : (i === 0 ? (isGuest ? 'HOST' : 'YOU') : (p.isBot ? 'BOT' : 'PLAYER'))}
+                                </div>
                             </div>
                         ))}
                     </div>
 
-                    <button 
-                        onClick={startNewGame}
-                        className="w-full bg-white text-black font-black py-5 rounded-[2rem] text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 font-pixel"
-                    >
-                        <Play fill="currentColor"/> START MATCH
-                    </button>
+                    {isHost ? (
+                        <button 
+                            onClick={startNewGame}
+                            className="w-full bg-white text-black font-black py-5 rounded-[2rem] text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 font-pixel"
+                        >
+                            <Play fill="currentColor"/> START MATCH
+                        </button>
+                    ) : (
+                        <div className="text-center text-gray-500 animate-pulse font-pixel text-xs">Waiting for Host to Start...</div>
+                    )}
                 </div>
             </div>
         );
@@ -255,6 +277,16 @@ const LudoGame: React.FC<GameProps> = ({ playerName, onGameEnd }) => {
                     <div className="text-[9px] font-black uppercase tracking-[0.4em] text-gray-500 mb-2">Turn Status</div>
                     <div className="text-lg font-black flex items-center gap-2 text-white">
                         {currentPlayer.avatar} {currentPlayer.name.split(' ')[0]}
+                        {isBotThinking && (
+                            <span className="flex items-center gap-2 text-[10px] text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20 animate-pulse ml-2 tracking-widest">
+                                <Loader2 size={10} className="animate-spin"/> THINKING
+                            </span>
+                        )}
+                        {network && !isMyTurn && !currentPlayer.isBot && (
+                            <span className="flex items-center gap-2 text-[10px] text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/20 animate-pulse ml-2 tracking-widest">
+                                <Wifi size={10} /> REMOTE
+                            </span>
+                        )}
                     </div>
                 </div>
                 <button 
