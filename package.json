@@ -1,23 +1,29 @@
 {
-  "name": "gamefix-multiplayer-arena",
+  "name": "gamefix-3d-ludo",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
-  "description": "Serverless multiplayer gaming platform with Ludo, Tic-Tac-Toe, Rock Paper Scissors, and Snake & Ladders",
+  "description": "3D Multiplayer Ludo King with React Three Fiber and WebRTC",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "peerjs": "1.5.4"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@react-three/fiber": "^8.15.0",
+    "@react-three/drei": "^9.92.0",
+    "@react-three/cannon": "^6.6.0",
+    "three": "^0.160.0",
+    "cannon-es": "^0.20.0",
+    "zustand": "^4.4.7",
+    "peerjs": "^1.5.4"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.160.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
