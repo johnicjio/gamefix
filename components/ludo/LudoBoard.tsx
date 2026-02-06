@@ -20,23 +20,6 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
     movingPieceId,
     diceValue
 }) => {
-  const [capturingPiece, setCapturingPiece] = useState<string | null>(null);
-  const [hoveredPiece, setHoveredPiece] = useState<string | null>(null);
-  const prevPiecesRef = useRef<Map<string, number>>(new Map());
-
-  // Track captures for animation
-  useEffect(() => {
-      pieces.forEach(p => {
-          const prevPos = prevPiecesRef.current.get(p.id);
-          if (prevPos !== undefined && prevPos !== -1 && p.position === -1) {
-              setCapturingPiece(p.id);
-              setTimeout(() => setCapturingPiece(null), 800);
-          }
-          prevPiecesRef.current.set(p.id, p.position);
-      });
-  }, [pieces]);
-
-  // Group pieces on same cell for stack rendering
   const pieceStacks = useMemo(() => {
       const stacks: Record<string, Piece[]> = {};
       pieces.forEach(p => {
@@ -52,37 +35,17 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
       return stacks;
   }, [pieces]);
 
-  // Calculate destination highlight when hovering a moveable piece
-  const targetHighlight = useMemo(() => {
-      if (!hoveredPiece || !diceValue || !validMoves.includes(hoveredPiece)) return null;
-      const piece = pieces.find(p => p.id === hoveredPiece);
-      if (!piece) return null;
-      
-      const targetPos = piece.position === -1 ? 0 : piece.position + diceValue;
-      if (targetPos > 57) return null;
-      
-      const coords = getPieceCoordinates(piece.color, targetPos, 0); 
-      return { x: coords.x, y: coords.y };
-  }, [hoveredPiece, diceValue, validMoves, pieces]);
-
   const renderCells = () => {
       const cells = [];
       const CELL_SIZE = 100 / 15;
       for(let y=0; y<15; y++) {
           for(let x=0; x<15; x++) {
-              // Skip home bases and center victory area (handled separately)
               if ((x<6 && y<6) || (x>8 && y<6) || (x<6 && y>8) || (x>8 && y>8)) continue; 
               if (x>5 && x<9 && y>5 && y<9) continue;
 
               let bgClass = "bg-transparent";
               let content = null;
-              let isHighlight = false;
 
-              if (targetHighlight && targetHighlight.x === x && targetHighlight.y === y) {
-                  isHighlight = true;
-              }
-
-              // Path decorations
               if (y===7 && x>0 && x<6) bgClass = "bg-green-500/10";
               if (x===1 && y===6) bgClass = "bg-green-600/60"; 
               if (x===7 && y>0 && y<6) bgClass = "bg-yellow-500/10";
@@ -99,10 +62,7 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
 
               cells.push(
                   <div key={`${x}-${y}`} 
-                       className={`absolute border-[0.5px] border-white/5 flex items-center justify-center transition-colors duration-500
-                           ${bgClass}
-                           ${isHighlight ? 'bg-white/30 ring-2 ring-white z-0 animate-pulse' : ''}
-                       `}
+                       className={`absolute border-[0.5px] border-white/5 flex items-center justify-center transition-all duration-300 ${bgClass}`}
                        style={{ left: `${x * CELL_SIZE}%`, top: `${y * CELL_SIZE}%`, width: `${CELL_SIZE}%`, height: `${CELL_SIZE}%` }}>
                       {content}
                   </div>
@@ -116,27 +76,18 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
     <div className="relative w-full max-w-[500px] aspect-square bg-gray-950 rounded-[3rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.6)] border-[12px] border-gray-900 mx-auto select-none touch-none">
         <style>{`
             @keyframes piece-hop {
-                0%, 100% { transform: translateY(0) scale(1, 1); }
-                40% { transform: translateY(-15px) scale(0.9, 1.2); }
-                60% { transform: translateY(-18px) scale(0.85, 1.25); }
-                80% { transform: translateY(-5px) scale(1.1, 0.9); }
+                0%, 100% { transform: translateY(0) scale(1.1); }
+                50% { transform: translateY(-30px) scale(1.3); }
             }
-            @keyframes active-pulse {
-                0%, 100% { box-shadow: 0 0 15px rgba(255,255,255,0.2); transform: scale(1); }
-                50% { box-shadow: 0 0 35px rgba(255,255,255,0.7); transform: scale(1.18); }
+            @keyframes piece-glow {
+                0%, 100% { box-shadow: 0 0 10px currentColor; }
+                50% { box-shadow: 0 0 25px currentColor; }
             }
-            @keyframes capture-burst {
-                0% { transform: scale(1.8); opacity: 1; filter: brightness(3); }
-                100% { transform: scale(0); opacity: 0; filter: brightness(1); }
-            }
-            .piece-hop-anim { animation: piece-hop 0.4s ease-in-out infinite; }
-            .active-piece-anim { animation: active-pulse 1.2s ease-in-out infinite; }
-            .captured-anim { animation: capture-burst 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+            .piece-hop-anim { animation: piece-hop 0.15s cubic-bezier(0.1, 0.7, 0.1, 1) infinite; }
+            .piece-glow-anim { animation: piece-glow 1.5s ease-in-out infinite; }
         `}</style>
         
-        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '30px 30px' }} />
-
-        {/* Home Bases Layout */}
+        {/* Home Bases */}
         {[LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE, LudoColor.RED].map((color, idx) => {
             const pos = [
                 { top: 0, left: 0, c: 'bg-green-600/5', b: 'border-green-500/20' },
@@ -147,29 +98,24 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
             return (
                 <div key={color} className={`absolute w-[40%] h-[40%] ${pos.c} p-4`} style={{ ...pos }}>
                     <div className={`w-full h-full rounded-[3rem] border-4 ${pos.b} flex items-center justify-center backdrop-blur-md shadow-inner relative overflow-hidden`}>
-                        <div className="absolute inset-0 opacity-10 bg-gradient-to-br from-white via-transparent to-black" />
                         <div className="grid grid-cols-2 gap-6 relative z-10 opacity-30">
-                            {[0,1,2,3].map(i => <div key={i} className="w-8 h-8 rounded-full bg-white/5 ring-4 ring-white/10 shadow-inner" />)}
+                            {[0,1,2,3].map(i => <div key={i} className="w-8 h-8 rounded-full bg-white/5 ring-4 ring-white/10" />)}
                         </div>
                     </div>
                 </div>
             );
         })}
 
-        {/* Center Victory Area */}
-        <div className="absolute left-[40%] top-[40%] w-[20%] h-[20%] z-10 bg-gray-900 border-4 border-gray-800 rotate-45 scale-[0.8] rounded-[2rem] flex items-center justify-center overflow-hidden shadow-2xl">
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 via-transparent to-purple-500/20" />
-            <Crown size={32} className="text-yellow-400 -rotate-45 relative z-10 drop-shadow-[0_0_15px_rgba(250,204,21,0.6)] animate-pulse" />
+        <div className="absolute left-[40%] top-[40%] w-[20%] h-[20%] z-10 bg-gray-900 border-4 border-gray-800 rotate-45 scale-[0.8] rounded-[2rem] flex items-center justify-center shadow-2xl">
+            <Crown size={32} className="text-yellow-400 -rotate-45 relative z-10 animate-pulse" />
         </div>
 
         {renderCells()}
 
-        {/* Pieces Rendering */}
         {pieces.map((piece, i) => {
             const coords = getPieceCoordinates(piece.color, piece.position, parseInt(piece.id.split('-')[1]));
             const isValidMove = validMoves.includes(piece.id);
             const isMoving = piece.id === movingPieceId;
-            const isCaptured = piece.id === capturingPiece;
             const CELL_SIZE = 100 / 15;
             
             const isHome = piece.position === 57;
@@ -177,33 +123,29 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
             const stack = pieceStacks[stackKey] || [];
             const stackIdx = stack.findIndex(p => p.id === piece.id);
 
+            // Dynamic Stacking Offset
             let offsetX = 0; let offsetY = 0;
-            if (stack.length > 1 && piece.position !== -1) {
+            if (stack.length > 1 && piece.position !== -1 && piece.position !== 57) {
                 const angle = (stackIdx / stack.length) * Math.PI * 2;
-                const dist = 2.0;
-                offsetX = Math.cos(angle) * dist;
-                offsetY = Math.sin(angle) * dist;
+                offsetX = Math.cos(angle) * 1.8;
+                offsetY = Math.sin(angle) * 1.8;
             }
 
             const theme = {
-                [LudoColor.GREEN]: 'bg-green-500 ring-green-300 shadow-green-500/40',
-                [LudoColor.YELLOW]: 'bg-yellow-400 ring-yellow-200 shadow-yellow-400/40',
-                [LudoColor.BLUE]: 'bg-blue-500 ring-blue-300 shadow-blue-500/40',
-                [LudoColor.RED]: 'bg-red-500 ring-red-300 shadow-red-500/40',
+                [LudoColor.GREEN]: 'bg-green-500 ring-green-300 text-green-400',
+                [LudoColor.YELLOW]: 'bg-yellow-400 ring-yellow-200 text-yellow-300',
+                [LudoColor.BLUE]: 'bg-blue-500 ring-blue-300 text-blue-400',
+                [LudoColor.RED]: 'bg-red-500 ring-red-300 text-red-400',
             };
 
             return (
                 <div
                     key={piece.id}
                     onClick={() => isValidMove && onPieceClick(piece)}
-                    onMouseEnter={() => isValidMove && setHoveredPiece(piece.id)}
-                    onMouseLeave={() => setHoveredPiece(null)}
-                    className={`absolute rounded-full w-[6%] h-[6%] flex items-center justify-center shadow-2xl ring-2
+                    className={`absolute rounded-full w-[6.5%] h-[6.5%] flex items-center justify-center shadow-2xl ring-2 transition-all duration-150 piece-glow-anim
                         ${theme[piece.color]} 
-                        ${isValidMove ? 'cursor-pointer active-piece-anim z-40' : ''}
-                        ${isMoving ? 'piece-hop-anim z-50' : 'transition-all duration-300 cubic-bezier(0.175, 0.885, 0.32, 1.275)'}
-                        ${isCaptured ? 'captured-anim pointer-events-none' : 'opacity-100'}
-                        ${piece.position === -1 ? 'scale-[1.3]' : ''}
+                        ${isValidMove ? 'cursor-pointer hover:scale-125 z-40 scale-110 ring-white' : ''}
+                        ${isMoving ? 'piece-hop-anim z-50' : ''}
                     `}
                     style={{
                         left: `calc(${coords.x * CELL_SIZE}% + ${offsetX + 0.3}%)`,
@@ -211,14 +153,7 @@ const LudoBoard: React.FC<LudoBoardProps> = ({
                         zIndex: isMoving ? 100 : (isHome ? 10 : 20 + i),
                     }}
                 >
-                    {isHome ? (
-                        <Crown size={14} className="text-white drop-shadow-sm" />
-                    ) : (
-                        <div className="w-3 h-3 bg-white/60 rounded-full shadow-inner ring-1 ring-black/10" />
-                    )}
-                    {isValidMove && (
-                        <div className="absolute inset-0 rounded-full border-2 border-white/80 animate-ping" />
-                    )}
+                    {isHome ? <Crown size={14} className="text-white" /> : <div className="w-3 h-3 bg-white/60 rounded-full" />}
                 </div>
             );
         })}
