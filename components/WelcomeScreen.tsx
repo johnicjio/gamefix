@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { GameType } from '../types';
-import { Play, ShieldCheck, Dice5, Grid3X3, Scissors, Mountain, Loader2, Wifi, Copy, Check, QrCode, ArrowRight } from 'lucide-react';
+import { Play, ShieldCheck, Dice5, Grid3X3, Scissors, Mountain, Loader2, Wifi, Copy, Check, QrCode, ArrowRight, Candy, Disc, Zap, Type, Ghost, Brain } from 'lucide-react';
 
 interface WelcomeScreenProps {
     onSelectGame: (type: GameType) => void;
@@ -61,12 +61,60 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             desc: "Rock, Paper, Scissors. Fast-paced mind games.",
             icon: <Scissors className="text-white" size={32}/>,
             color: "rose"
+        },
+        {
+            type: GameType.CANDY_LAND,
+            title: "CANDY LAND",
+            tag: "Race",
+            desc: "A sugary race to the castle. Draw cards and move!",
+            icon: <Candy className="text-white" size={32}/>,
+            color: "pink"
+        },
+        {
+            type: GameType.CARROM,
+            title: "CARROM PRO",
+            tag: "Physics",
+            desc: "Strike and pocket coins. Realistic physics engine.",
+            icon: <Disc className="text-white" size={32}/>,
+            color: "amber"
+        },
+        {
+            type: GameType.BRAWLER,
+            title: "PIXEL BRAWL",
+            tag: "Action",
+            desc: "Platform fighter. Stomp enemies to win.",
+            icon: <Zap className="text-white" size={32}/>,
+            color: "red"
+        },
+        {
+            type: GameType.WORD,
+            title: "WORD BATTLE",
+            tag: "Trivia",
+            desc: "Vocabulary showdown. Think fast.",
+            icon: <Type className="text-white" size={32}/>,
+            color: "purple"
+        },
+        {
+            type: GameType.SEANCE,
+            title: "THE SEANCE",
+            tag: "Co-op Puzzle",
+            desc: "Work together to guide the planchette.",
+            icon: <Ghost className="text-white" size={32}/>,
+            color: "violet"
+        },
+        {
+            type: GameType.NPAT,
+            title: "N.P.A.T",
+            tag: "Memory",
+            desc: "Name, Place, Animal, Thing. Beat the clock.",
+            icon: <Brain className="text-white" size={32}/>,
+            color: "blue"
         }
     ];
 
     return (
         <div className="flex flex-col items-center justify-center min-h-[70vh] p-4 animate-in fade-in zoom-in duration-500">
-            <div className="max-w-5xl w-full bg-gray-900/60 backdrop-blur-2xl rounded-[3rem] border border-white/5 p-8 sm:p-12 shadow-[0_0_100px_rgba(79,70,229,0.1)] relative overflow-hidden">
+            <div className="max-w-6xl w-full bg-gray-900/60 backdrop-blur-2xl rounded-[3rem] border border-white/5 p-8 sm:p-12 shadow-[0_0_100px_rgba(79,70,229,0.1)] relative overflow-hidden">
                 
                 <div className="relative z-10 flex flex-col items-center text-center">
                     <div className="inline-flex items-center gap-2 bg-indigo-500/20 px-4 py-2 rounded-full border border-indigo-500/30 text-indigo-300 text-[10px] font-black uppercase tracking-widest mb-8">
@@ -137,19 +185,41 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                         )}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full mb-12">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 w-full mb-12">
                         {cards.map(card => {
                             const isSelected = selectedGame === card.type;
                             const colorClass = card.color;
-                            const bgMap: Record<string, string> = { indigo: 'bg-indigo-900/60 border-indigo-500', emerald: 'bg-emerald-900/60 border-emerald-500', cyan: 'bg-cyan-900/60 border-cyan-500', rose: 'bg-rose-900/60 border-rose-500' };
-                            const gradMap: Record<string, string> = { indigo: 'from-indigo-500 to-indigo-700', emerald: 'from-emerald-500 to-emerald-700', cyan: 'from-cyan-500 to-cyan-700', rose: 'from-rose-500 to-rose-700' };
+                            const bgMap: Record<string, string> = { 
+                                indigo: 'bg-indigo-900/60 border-indigo-500', 
+                                emerald: 'bg-emerald-900/60 border-emerald-500', 
+                                cyan: 'bg-cyan-900/60 border-cyan-500', 
+                                rose: 'bg-rose-900/60 border-rose-500',
+                                pink: 'bg-pink-900/60 border-pink-500',
+                                amber: 'bg-amber-900/60 border-amber-500',
+                                red: 'bg-red-900/60 border-red-500',
+                                purple: 'bg-purple-900/60 border-purple-500',
+                                violet: 'bg-violet-900/60 border-violet-500',
+                                blue: 'bg-blue-900/60 border-blue-500'
+                            };
+                            const gradMap: Record<string, string> = { 
+                                indigo: 'from-indigo-500 to-indigo-700', 
+                                emerald: 'from-emerald-500 to-emerald-700', 
+                                cyan: 'from-cyan-500 to-cyan-700', 
+                                rose: 'from-rose-500 to-rose-700',
+                                pink: 'from-pink-500 to-pink-700',
+                                amber: 'from-amber-500 to-amber-700',
+                                red: 'from-red-500 to-red-700',
+                                purple: 'from-purple-500 to-purple-700',
+                                violet: 'from-violet-500 to-violet-700',
+                                blue: 'from-blue-500 to-blue-700'
+                            };
 
                             return (
                                 <button 
                                     key={card.type}
                                     onClick={() => networkRole !== 'GUEST' && setSelectedGame(card.type)}
                                     disabled={networkRole === 'GUEST'}
-                                    className={`relative group p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-3 hover:scale-105 active:scale-95 h-full
+                                    className={`relative group p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-3 hover:scale-105 active:scale-95 h-full
                                         ${isSelected ? `${bgMap[colorClass]} shadow-2xl scale-105` : 'bg-gray-800/40 border-gray-700 opacity-60 hover:opacity-100'}
                                         ${networkRole === 'GUEST' ? 'cursor-not-allowed opacity-40' : ''}
                                     `}
@@ -157,7 +227,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                                     <div className={`p-3 rounded-2xl bg-gradient-to-br ${gradMap[colorClass]} shadow-lg mb-2 pixel-shadow`}>
                                         {card.icon}
                                     </div>
-                                    <div className="text-sm font-black text-white tracking-tight font-pixel">{card.title}</div>
+                                    <div className="text-xs font-black text-white tracking-tight font-pixel text-center">{card.title}</div>
                                     {isSelected && <div className={`absolute inset-0 border-2 border-white/20 rounded-3xl animate-pulse`}></div>}
                                 </button>
                             );

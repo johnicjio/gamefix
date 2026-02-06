@@ -29,10 +29,19 @@ export class PeerService {
   
   myId: string = '';
   private heartbeatInterval: any = null;
+  private reconnectInterval: any = null;
 
   constructor() {}
 
   async init(customId?: string): Promise<string> {
+    // If we already have an active peer with the same ID, just return it
+    if (this.peer && !this.peer.destroyed && this.myId && (!customId || customId === this.myId)) {
+        if (this.peer.disconnected) {
+            this.peer.reconnect();
+        }
+        return this.myId;
+    }
+
     this.cleanup();
     
     return new Promise((resolve, reject) => {
@@ -40,13 +49,33 @@ export class PeerService {
 
       this.peer.on('open', (id) => {
         this.myId = id;
+        this.stopReconnect();
         resolve(id);
       });
 
-      this.peer.on('error', (err) => {
-        console.error('Peer error:', err);
-        if (this.onError) this.onError(err);
-        if (!this.myId) reject(err);
+      this.peer.on('error', (err: any) => {
+        console.error('Peer error:', err?.type, err);
+        
+        if (err?.type === 'peer-unavailable') {
+             if (this.onError) this.onError(err);
+        } else if (err?.type === 'network' || err?.type === 'server-error' || err?.message === 'Lost connection to server.') {
+             // Suppress alert, try reconnect
+             console.warn('Network issue detected. Attempting signaling reconnect...');
+             this.startReconnect();
+        } else {
+             if (this.onError) this.onError(err);
+             if (!this.myId) reject(err);
+        }
+      });
+
+      this.peer.on('disconnected', () => {
+          console.warn('Peer disconnected from server.');
+          this.startReconnect();
+      });
+
+      this.peer.on('close', () => {
+          console.warn('Peer destroyed.');
+          this.cleanup();
       });
 
       this.peer.on('connection', (conn) => {
@@ -55,9 +84,36 @@ export class PeerService {
     });
   }
 
+  private startReconnect() {
+      if (this.reconnectInterval) return;
+      
+      // Try once immediately
+      if (this.peer && !this.peer.destroyed && this.peer.disconnected) {
+          this.peer.reconnect();
+      }
+
+      this.reconnectInterval = setInterval(() => {
+          if (this.peer && !this.peer.destroyed && this.peer.disconnected) {
+              console.log('Reconnecting to signaling server...');
+              this.peer.reconnect();
+          } else {
+              this.stopReconnect();
+          }
+      }, 3000);
+  }
+
+  private stopReconnect() {
+      if (this.reconnectInterval) {
+          clearInterval(this.reconnectInterval);
+          this.reconnectInterval = null;
+      }
+  }
+
   connect(hostId: string) {
-    if (!this.peer) return;
+    if (!this.peer || this.peer.destroyed) return;
     try {
+        if (this.peer.disconnected) this.peer.reconnect();
+        
         const conn = this.peer.connect(hostId, { reliable: true });
         this.handleConnection(conn, true);
     } catch (e) {
@@ -71,7 +127,10 @@ export class PeerService {
       if (isOutgoingToHost) {
           this.hostConnection = conn;
           if (this.onConnect) this.onConnect();
-          this.send({ type: 'JOIN_REQUEST', peerId: this.myId });
+          // Send join request immediately
+          setTimeout(() => {
+            if (conn.open) conn.send({ type: 'JOIN_REQUEST', peerId: this.myId });
+          }, 500);
       } else {
           if (this.onPeerConnected) this.onPeerConnected(conn.peer);
       }
@@ -79,7 +138,7 @@ export class PeerService {
     });
 
     conn.on('data', (data) => {
-      if (data?.type === 'HEARTBEAT') return;
+      if ((data as any)?.type === 'HEARTBEAT') return;
       if (this.onData) this.onData(data, conn.peer);
     });
 
@@ -94,11 +153,17 @@ export class PeerService {
     });
 
     conn.on('error', (err) => {
+        console.error("Connection Error:", err);
         if (this.onError) this.onError(err);
     });
   }
 
   send(data: any, targetPeerId?: string) {
+    // If disconnected from signaling, P2P might still work, but we check if we need to reconnect
+    if (this.peer && this.peer.disconnected && !this.peer.destroyed) {
+        this.peer.reconnect();
+    }
+
     if (targetPeerId) {
         const conn = this.connections.get(targetPeerId);
         if (conn && conn.open) conn.send(data);
@@ -115,7 +180,7 @@ export class PeerService {
           this.connections.forEach(conn => {
               if (conn.open) conn.send({ type: 'HEARTBEAT' });
           });
-      }, 5000);
+      }, 3000);
   }
 
   private stopHeartbeat() {
@@ -127,11 +192,14 @@ export class PeerService {
 
   cleanup() {
     this.stopHeartbeat();
+    this.stopReconnect();
     this.connections.forEach(conn => conn.close());
     this.connections.clear();
     this.hostConnection = null;
     if (this.peer) {
-        this.peer.destroy();
+        // Only destroy if we are truly done (e.g. app unmount or manual disconnect)
+        // But for cleanup during init, we destroy old one
+        if (!this.peer.destroyed) this.peer.destroy();
         this.peer = null;
     }
     this.myId = '';

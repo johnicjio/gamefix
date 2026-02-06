@@ -2,13 +2,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameProps } from '../../types';
 import { audioService } from '../../services/audioService';
-import { User, Cpu, ArrowUpCircle, Ghost, AlertTriangle, RefreshCw, Wifi } from 'lucide-react';
+import { User, Cpu, ArrowUpCircle, Ghost, AlertTriangle, RefreshCw, Wifi, Loader2 } from 'lucide-react';
 
 const SNAKES: Record<number, number> = { 17:7, 54:34, 62:18, 64:60, 87:24, 93:73, 95:75, 99:80 };
 const LADDERS: Record<number, number> = { 1:38, 4:14, 9:31, 21:42, 28:84, 36:44, 51:67, 71:91, 80:100 };
 
 const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }) => {
-    // Network Role Determination
+    // Role Determination
     const isHost = !network || network.role === 'HOST' || network.role === 'OFFLINE';
     const isGuest = network && network.role === 'GUEST';
     const isConnected = network?.isConnected ?? false;
@@ -24,143 +24,141 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }
     const [log, setLog] = useState<string[]>(["Welcome to Pixel Climber!"]);
 
     const currentPlayer = players[turn];
-    const isMyTurn = isHost ? (turn === 0) : (turn === 1); // Host is P1, Guest is P2
+    const isMyTurn = isHost ? (turn === 0) : (turn === 1); 
 
-    // --- Networking Sync ---
-
-    // 1. Sync Logic (Host Broadcasts, Guest Listens)
-    useEffect(() => {
-        if (network) {
-            if (isGuest) {
-                network.onStateUpdate((state) => {
-                    setPlayers(state.players);
-                    setTurn(state.turn);
-                    setDice(state.dice);
-                    setIsMoving(state.isMoving);
-                    if (state.lastLog) setLog(prev => [state.lastLog, ...prev].slice(0, 5));
-                });
-            } else if (isHost) {
-                network.onActionReceived((action, payload) => {
-                    if (action === 'ROLL') {
-                        handleRoll();
-                    }
-                });
+    // --- Host Authoritative Logic ---
+    const calculateMoveResult = (currentPos: number) => {
+        const roll = Math.floor(Math.random() * 6) + 1;
+        const target = Math.min(100, currentPos + roll);
+        
+        let finalPos = target;
+        let eventMsg = null;
+        
+        if (target !== 100) {
+            if (SNAKES[target]) {
+                finalPos = SNAKES[target];
+                eventMsg = `SNAKE! Down to ${finalPos}`;
+            } else if (LADDERS[target]) {
+                finalPos = LADDERS[target];
+                eventMsg = `LADDER! Up to ${finalPos}`;
             }
         }
-    }, [network, isHost, isGuest]);
-
-    // 2. Broadcast (Host Only)
-    useEffect(() => {
-        if (isHost && network && !isOfflineMode) {
-            network.broadcastState({
-                players,
-                turn,
-                dice,
-                isMoving,
-                // We send log only when it changes effectively, handled by setState elsewhere but 
-                // for simple sync, we don't broadcast entire log array, just generic state.
-            });
-        }
-    }, [players, turn, dice, isMoving, isHost, isOfflineMode, network]);
-
-    // 3. Update P2 status if connection changes
-    useEffect(() => {
-        if (isHost) {
-            setPlayers(prev => {
-                const p2 = prev[1];
-                const shouldBeBot = isOfflineMode;
-                if (p2.isBot !== shouldBeBot) {
-                    return [
-                        prev[0],
-                        { ...p2, isBot: shouldBeBot, name: shouldBeBot ? 'Bot Blue' : 'Opponent', avatar: shouldBeBot ? '🤖' : '👩‍🚀' }
-                    ];
-                }
-                return prev;
-            });
-        }
-    }, [isOfflineMode, isHost]);
-
-
-    // --- Game Logic ---
-
-    const handleRoll = () => {
-        // Guest sends request
-        if (isGuest && isConnected) {
-            if (!isMyTurn) return;
-            network?.sendAction('ROLL');
-            return;
-        }
-
-        // Host/Offline Logic
-        if (isMoving || dice) return;
         
-        audioService.playRoll();
-        setIsMoving(true);
-        
-        let counter = 0;
-        const rollInterval = setInterval(() => {
-            setDice(Math.floor(Math.random() * 6) + 1);
-            counter++;
-            if (counter > 10) {
-                clearInterval(rollInterval);
-                const finalVal = Math.floor(Math.random() * 6) + 1;
-                setDice(finalVal);
-                move(finalVal);
-            }
-        }, 50);
+        return { roll, target, finalPos, eventMsg };
     };
 
-    const move = async (steps: number) => {
-        let curr = currentPlayer.pos;
-        const target = Math.min(100, curr + steps);
+    const processMove = async (roll: number, target: number, finalPos: number, eventMsg: string | null) => {
+        setIsMoving(true);
+        audioService.playRoll();
+        
+        // Dice Animation
+        for (let i = 0; i < 10; i++) {
+            setDice(Math.floor(Math.random() * 6) + 1);
+            await new Promise(r => setTimeout(r, 50));
+        }
+        setDice(roll);
 
-        // Animate Step-by-Step
-        for (let i = curr + 1; i <= target; i++) {
+        // Movement Animation
+        let current = players[turn].pos;
+        for (let i = current + 1; i <= target; i++) {
             setPlayers(prev => prev.map((p, idx) => idx === turn ? { ...p, pos: i } : p));
             audioService.playTick();
             await new Promise(r => setTimeout(r, 200));
         }
 
-        if (target === 100) {
-            audioService.playCelebration();
-            setIsMoving(false);
-            if (onGameEnd) setTimeout(() => onGameEnd(currentPlayer.name), 1500);
-            return;
-        }
-
-        let finalPos = target;
-        let eventMsg = "";
-        
-        if (SNAKES[target]) {
-            finalPos = SNAKES[target];
-            eventMsg = `GLITCH! ${currentPlayer.name} fell to ${finalPos}`;
-            audioService.playFailure();
-        } else if (LADDERS[target]) {
-            finalPos = LADDERS[target];
-            eventMsg = `POWER UP! ${currentPlayer.name} climbed to ${finalPos}`;
-            audioService.playLevelUp();
-        }
-
-        if (finalPos !== target) {
-            setLog(prev => [eventMsg, ...prev].slice(0, 5));
-            if (isHost && !isOfflineMode) network?.broadcastState({ players, turn, dice, isMoving, lastLog: eventMsg });
+        // Special Events
+        if (eventMsg) {
+            setLog(prev => [eventMsg!, ...prev].slice(0, 5));
+            if (SNAKES[target]) audioService.playFailure();
+            else audioService.playLevelUp();
             
             await new Promise(r => setTimeout(r, 500));
             setPlayers(prev => prev.map((p, idx) => idx === turn ? { ...p, pos: finalPos } : p));
         }
 
+        if (finalPos === 100) {
+            audioService.playCelebration();
+            if (onGameEnd && isHost) setTimeout(() => onGameEnd(players[turn].name), 1500);
+            return;
+        }
+
         setIsMoving(false);
         setDice(null);
-        setTurn((turn + 1) % players.length);
+        setTurn(t => (t + 1) % players.length);
     };
 
-    // Bot Auto-play
+    // --- Networking ---
+    useEffect(() => {
+        if (network) {
+            if (isHost) {
+                // Host listens for Roll Requests
+                network.onActionReceived((action, payload) => {
+                    if (action === 'REQUEST_ROLL') {
+                        if (isMoving || turn !== 1) return; // Ignore invalid requests
+                        const { roll, target, finalPos, eventMsg } = calculateMoveResult(players[1].pos);
+                        // Broadcast result immediately
+                        network.broadcastState({ type: 'MOVE_RESULT', roll, target, finalPos, eventMsg, turn: 1 });
+                        // Execute locally
+                        processMove(roll, target, finalPos, eventMsg);
+                    }
+                });
+            } else if (isGuest) {
+                // Guest listens for results
+                network.onStateUpdate((state) => {
+                    if (state.type === 'MOVE_RESULT') {
+                        // Execute the move dictated by host
+                        processMove(state.roll, state.target, state.finalPos, state.eventMsg);
+                    } else if (state.type === 'SYNC') {
+                         // Fallback sync
+                         setPlayers(state.players);
+                         setTurn(state.turn);
+                    }
+                });
+            }
+        }
+    }, [network, isHost, isGuest, turn, isMoving, players]);
+
+    // Host Bot Logic
     useEffect(() => {
         if (isHost && currentPlayer.isBot && !isMoving && !dice) {
-            const t = setTimeout(handleRoll, 1500);
+            const t = setTimeout(() => {
+                 const { roll, target, finalPos, eventMsg } = calculateMoveResult(currentPlayer.pos);
+                 if (network && !isOfflineMode) {
+                     network.broadcastState({ type: 'MOVE_RESULT', roll, target, finalPos, eventMsg, turn: 1 });
+                 }
+                 processMove(roll, target, finalPos, eventMsg);
+            }, 1000);
             return () => clearTimeout(t);
         }
-    }, [turn, isMoving, dice, currentPlayer, isHost]);
+    }, [isHost, turn, isMoving, dice, currentPlayer]);
+
+    // Periodic Sync from Host to Guest (Correction)
+    useEffect(() => {
+        if (isHost && !isMoving && !dice && !isOfflineMode) {
+             const t = setInterval(() => {
+                 network?.broadcastState({ type: 'SYNC', players, turn });
+             }, 2000);
+             return () => clearInterval(t);
+        }
+    }, [isHost, isMoving, dice, players, turn, isOfflineMode]);
+
+
+    const handleRollClick = () => {
+        if (isMoving || dice) return;
+        
+        if (isGuest) {
+            if (isMyTurn) network?.sendAction('REQUEST_ROLL');
+        } else {
+            // Host Move
+            if (isMyTurn) {
+                const { roll, target, finalPos, eventMsg } = calculateMoveResult(currentPlayer.pos);
+                if (network && !isOfflineMode) {
+                    network.broadcastState({ type: 'MOVE_RESULT', roll, target, finalPos, eventMsg, turn: 0 });
+                }
+                processMove(roll, target, finalPos, eventMsg);
+            }
+        }
+    };
 
     const getCoords = (pos: number) => {
         const index = pos - 1;
@@ -187,14 +185,8 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }
     return (
         <div className="flex flex-col items-center w-full max-w-6xl mx-auto p-4 gap-6 select-none animate-in fade-in">
             <style>{`
-                @keyframes float {
-                    0% { transform: translateY(0px); }
-                    50% { transform: translateY(-5px); }
-                    100% { transform: translateY(0px); }
-                }
-                .pixel-border {
-                    box-shadow: 0 -4px 0 0 #000, 0 4px 0 0 #000, -4px 0 0 0 #000, 4px 0 0 0 #000;
-                }
+                @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-5px); } 100% { transform: translateY(0px); } }
+                .pixel-border { box-shadow: 0 -4px 0 0 #000, 0 4px 0 0 #000, -4px 0 0 0 #000, 4px 0 0 0 #000; }
             `}</style>
 
             <div className="text-center space-y-2">
@@ -202,7 +194,6 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }
                     Pixel Climber
                 </h1>
                 <div className="flex justify-center gap-4">
-                     <p className="text-[10px] text-gray-500 uppercase tracking-widest font-pixel">STAGE 01</p>
                      {!isOfflineMode && (
                         <div className="flex items-center gap-1 text-[9px] bg-green-900/40 text-green-400 px-2 py-1 rounded">
                             <Wifi size={10} className="animate-pulse"/> ONLINE
@@ -278,13 +269,13 @@ const SnakeLadderGame: React.FC<GameProps> = ({ playerName, onGameEnd, network }
                             </div>
                         </div>
                         <button 
-                            onClick={handleRoll} 
+                            onClick={handleRollClick} 
                             disabled={!isMyTurn || isMoving} 
                             className={`w-24 h-24 rounded-2xl flex items-center justify-center text-5xl pixel-border transition-all 
                                 ${dice ? 'bg-white text-black scale-100 ring-4 ring-white/20' : 'bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-105 active:scale-95'} 
                                 disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
-                            <span className="font-pixel">{dice ?? '?'}</span>
+                            {isMoving && !dice ? <Loader2 className="animate-spin"/> : <span className="font-pixel">{dice ?? '?'}</span>}
                         </button>
                     </div>
 
