@@ -1,0 +1,211 @@
+.snake-ladders-game {
+  max-width: 900px;
+}
+
+.player-info-row {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 15px;
+}
+
+.player-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 20px;
+  background: white;
+  border-radius: 12px;
+  border: 3px solid;
+  flex: 1;
+  max-width: 200px;
+}
+
+.player-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+}
+
+.player-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--dark);
+}
+
+.player-position {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.dice-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin: 20px 0;
+  padding: 20px;
+  background: var(--light);
+  border-radius: 12px;
+}
+
+.dice-display {
+  width: 80px;
+  height: 80px;
+  background: white;
+  border: 4px solid var(--dark);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: var(--dark);
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.3s;
+}
+
+.dice-display.rolling {
+  animation: diceRoll 0.5s ease;
+}
+
+@keyframes diceRoll {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(90deg); }
+  50% { transform: rotate(180deg); }
+  75% { transform: rotate(270deg); }
+}
+
+.snake-ladders-board {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-radius: 16px;
+  padding: 15px;
+  box-shadow: var(--shadow-lg);
+  margin: 20px 0;
+}
+
+.board-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.board-row:last-child {
+  margin-bottom: 0;
+}
+
+.board-cell {
+  flex: 1;
+  aspect-ratio: 1;
+  background: white;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.board-cell.has-ladder {
+  background: linear-gradient(135deg, #10b98120 0%, #34d39920 100%);
+  border-color: #10b981;
+}
+
+.board-cell.has-snake {
+  background: linear-gradient(135deg, #ef444420 0%, #dc262620 100%);
+  border-color: #ef4444;
+}
+
+.cell-number {
+  font-size: 0.75rem;
+  color: #6b7280;
+  position: absolute;
+  top: 4px;
+  left: 4px;
+}
+
+.snake-ladder-icon {
+  font-size: 1.5rem;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.6;
+}
+
+.players-on-cell {
+  display: flex;
+  gap: 4px;
+  position: absolute;
+  bottom: 4px;
+  z-index: 10;
+}
+
+.player-token {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  animation: tokenBounce 0.5s ease;
+}
+
+@keyframes tokenBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.game-legend {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  padding: 20px;
+  background: var(--light);
+  border-radius: 12px;
+  margin-top: 20px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: var(--dark);
+}
+
+.legend-item span:first-child {
+  font-size: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .board-cell {
+    font-size: 0.6rem;
+  }
+  
+  .cell-number {
+    font-size: 0.6rem;
+  }
+  
+  .snake-ladder-icon {
+    font-size: 1rem;
+  }
+  
+  .player-token {
+    width: 12px;
+    height: 12px;
+  }
+  
+  .player-info-row {
+    flex-direction: column;
+  }
+  
+  .player-card {
+    max-width: 100%;
+  }
+}
