@@ -1,0 +1,130 @@
+.game-ui {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.ui-panel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  min-width: 250px;
+  pointer-events: auto;
+}
+
+.player-indicator {
+  padding: 12px;
+  border-radius: 8px;
+  color: white;
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-align: center;
+  margin-bottom: 15px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.turn-indicator {
+  margin-bottom: 15px;
+}
+
+.turn-text {
+  font-size: 1.2rem;
+  font-weight: 700;
+  text-align: center;
+  color: #7f8c8d;
+  padding: 10px;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.turn-text.active {
+  color: white;
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.winner-text {
+  font-size: 1.5rem;
+  font-weight: 800;
+  text-align: center;
+  color: #10b981;
+  padding: 15px;
+  background: linear-gradient(135deg, #10b98120 0%, #34d39920 100%);
+  border-radius: 8px;
+}
+
+.dice-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.dice-label {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.dice-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #6366f1;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #6366f1;
+}
+
+.instruction {
+  text-align: center;
+  color: #6366f1;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 10px;
+  background: #eef2ff;
+  border-radius: 8px;
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@media (max-width: 768px) {
+  .game-ui {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+  }
+  
+  .ui-panel {
+    min-width: auto;
+    padding: 15px;
+  }
+}
