@@ -1,5 +1,5 @@
 {
-  "name": "Duo Arena: Ludo & Word Quest",
-  "description": "A high-fidelity gaming duo featuring smooth Ludo animations and a vocabulary duel powered by Gemini 3 Flash.",
+  "name": "RetroVerse Arcade",
+  "description": "A high-fidelity, authoritative multiplayer arcade system featuring Ludo, Snakes & Ladders, and Tic-Tac-Toe. Built with a host-client architecture over WebRTC for deterministic state synchronization.",
   "requestFramePermissions": []
 }
